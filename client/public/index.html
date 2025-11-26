@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <link rel="icon" href="%PUBLIC_URL%/favicon.ico" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>課程地圖系統</title>
+
+    <script>
+      const _originalError = window.console.error;
+      window.console.error = (...args) => {
+        if (
+          typeof args[0] === 'string' && 
+          (args[0].includes('ResizeObserver loop') || args[0].includes('undelivered notifications'))
+        ) {
+          // 忽略這個特定的錯誤，不讓它顯示在 Console 也不會觸發 Error Overlay
+          return;
+        }
+        _originalError.apply(window.console, args);
+      };
+
+      window.addEventListener('error', (e) => {
+        if (
+          e.message === 'ResizeObserver loop completed with undelivered notifications.' ||
+          e.message === 'ResizeObserver loop limit exceeded'
+        ) {
+          e.stopImmediatePropagation();
+        }
+      });
+    </script>
+    </head>
+  <body>
+    <div id="root"></div>
+  </body>
+</html>

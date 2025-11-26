@@ -1,0 +1,20 @@
+// routes/courseRoutes.js
+import express from 'express';
+import {
+  getAllCourses,
+  addCourse,
+  deleteCourse,
+} from '../controllers/courseController.js';
+
+const router = express.Router();
+
+// 查詢所有課程
+router.get('/', getAllCourses);
+
+// 新增課程
+router.post('/', addCourse);
+
+// 刪除課程
+router.delete('/:id', deleteCourse);
+
+export default router;

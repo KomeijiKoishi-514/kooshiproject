@@ -1,0 +1,11 @@
+cd .\curriculum-map
+npm start
+啟用後端
+
+cd .\curriculum-map\client
+npm start
+啟用前端
+
+如果沒有node.js的話請先安裝
+
+routes

@@ -1,0 +1,37 @@
+後端(Backend)
+routes+controllers
+
+角色：資料的守門員與搬運工
+後端 (Node.js/Express)的Route是真正接觸到伺服器請求的第一線。它的重點在於「處理資料」。
+當前端（瀏覽器）想要拿資料或存資料時，會向後端發送一個請求（例如 HTTP GET 或 POST）。
+後端的 Route 會看這個請求的「網址路徑」和「方法」，決定要執行哪個Controller的function來操作資料庫。
+
+比喻： 就像去餐廳點餐。
+你（前端）跟服務生（Route）說：「我要一份牛排（GET /api/courses）」。
+服務生不會自己做菜，他會把訂單送到廚房（Controller），廚房做好後，服務生再把牛排（JSON 資料）端給你。
+服務生只在乎「你點了什麼」跟「把餐點送達」，他不在乎你坐在哪裡吃。
+
+專案中的例子：
+當前端需要所有課程資料時，會發送請求到 GET /api/courses。後端的 Route 接收到這個路徑，知道要去找資料庫拿課程列表，然後回傳 JSON 格式的資料。
+當管理員要登入時，會發送請求到 POST /api/login。後端的 Route 接收到，知道要去驗證帳號密碼。
+
+前端(Frontend Client-side Routes)
+client\...
+
+角色：畫面的導播
+前端 (React + React Router) 的Route則是在使用者的瀏覽器上運作的。它的重點在於「切換畫面」。
+在現代的網頁應用程式（SPA, Single Page Application）中，當我們切換頁面時，瀏覽器其實並沒有真的重新載入整個網頁。
+而是前端的 Route 偵測到網址改變了，它會「騙」瀏覽器，動態地把目前的元件（例如首頁元件）拿掉，換成另一個元件（例如管理頁面元件）。
+
+比喻： 就像在看電視轉台。
+電視機（瀏覽器）還是同一台，但是導播（Frontend Route）按了按鈕，畫面就從第 1 台（首頁）切換到第 2 台（管理後台）。
+
+專案中的例子：
+
+sidebar.jsx
+
+...
+<Link to="/curriculum">學程地圖</Link>
+<Link to="/admin">管理系統</Link>
+
+當使用者點擊「管理系統」時，React Router會把網址變成 /admin，並且告訴React：「嘿，把中間那塊畫布換成 AdminPage 元件顯示出來」，整個過程不需要跟後端要新的 HTML 檔案。

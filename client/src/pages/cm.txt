@@ -1,0 +1,589 @@
+// client/src/pages/CurriculumMap.jsx
+import React, { useEffect, useState, useCallback, memo } from "react";
+import ReactFlow, {
+  MiniMap,
+  Controls,
+  Background,
+  Handle,
+  Position,
+  NodeToolbar,
+  ReactFlowProvider,
+  useReactFlow,
+  getRectOfNodes,
+} from "reactflow";
+import FlowErrorBoundary from "../components/FlowErrorBoundary";
+import { motion, AnimatePresence } from "framer-motion"; 
+import { toPng } from "html-to-image";
+import { jsPDF } from "jspdf";
+import "reactflow/dist/style.css";
+import axios from "axios";
+
+// =========================================================
+// 🎨 分類 → 顏色
+// =========================================================
+function categoryColor(cat) {
+  switch (cat) {
+    case "校定必修": return "#ef4444";
+    case "院定必修": return "#f59e0b";
+    case "系定必修": return "#10b981";
+    case "系上選修": return "#3b82f6";
+    default: return "#6b7280";
+  }
+}
+// 左側標題用
+function getYearText(level) {
+  switch (level) {
+  	case 1: return "一年級上";
+  	case 2: return "一年級下";
+  	case 3: return "二年級上";
+  	case 4: return "二年級下";
+  	case 5: return "三年級上";
+  	case 6: return "三年級下";
+  	case 7: return "四年級上";
+  	case 8: return "四年級下";
+  	default: return "未分類";
+  }
+}
+// 匯出(ReactFlowProvider 內部才能運作
+function ExportComponent({ isExporting, onExportStart, onExportEnd, mapData }) {
+  const { getNodes } = useReactFlow();
+
+  const exportImage = async (type = "PNG") => {
+  	onExportStart();
+  	const nodes = getNodes();
+  	if (nodes.length === 0) {
+  	  onExportEnd();
+  	  return;
+  	}
+
+    try {
+      // 1. 計算邊界 (不變)
+      const nodesBounds = getRectOfNodes(nodes);
+      const PADDING = 40;
+      const LABEL_WIDTH = 100;
+
+      // 2. 取得 React Flow 畫布 (不變)
+      const reactFlowViewport = document.querySelector(".react-flow__viewport");
+      if (!reactFlowViewport) throw new Error("找不到 .react-flow__viewport");
+
+      // 3. 擷取 "純地圖" 圖片 (不變)
+      //    加入 cacheBust: true 確保圖片最新
+      const dataUrl = await toPng(reactFlowViewport, {
+        width: nodesBounds.width,
+        height: nodesBounds.height,
+        pixelRatio: 2,
+        style: {
+          width: `${nodesBounds.width}px`,
+          height: `${nodesBounds.height}px`,
+          transform: `translate(${-nodesBounds.x}px, ${-nodesBounds.y}px) scale(1)`,
+        },
+        cacheBust: true,
+      });
+
+      // 4. 建立 "匯出專用" DOM 結構 (不變)
+      const exportWrapper = document.createElement("div");
+      // ❗ [修改] 改變隱藏 DOM 的方式
+      exportWrapper.style.position = "absolute";
+      exportWrapper.style.top = "0"; // 放在 (0,0)
+      exportWrapper.style.left = "0"; // 放在 (0,0)
+      exportWrapper.style.visibility = "hidden"; // 設為不可見 (但仍可被擷取)
+      exportWrapper.style.zIndex = "-10"; // 放到最後面
+      // ❌ (移除 'left: "-9999px"')
+
+      exportWrapper.style.display = "flex";
+      exportWrapper.style.background = "#ffffff";
+      exportWrapper.style.padding = `${PADDING}px`;
+
+      // 5. 建立左側 "學年度標籤" (不變)
+      const labelsDiv = document.createElement("div");
+      labelsDiv.style.width = `${LABEL_WIDTH}px`;
+      labelsDiv.style.marginRight = "20px";
+      labelsDiv.style.display = "flex";
+      labelsDiv.style.flexDirection = "column";
+
+      mapData.sortedYears.forEach((year) => {
+        const label = document.createElement("div");
+        label.innerText = getYearText(year);
+        label.style.fontWeight = "bold";
+        label.style.fontSize = "18px";
+        label.style.height = `${mapData.V_GAP}px`;
+        label.style.paddingTop = "10px"; 
+        labelsDiv.appendChild(label);
+      });
+      exportWrapper.appendChild(labelsDiv);
+
+      // 6. 建立 "純地圖" 圖片 (不變)
+      const mapImage = new Image();
+      mapImage.src = dataUrl;
+      mapImage.style.width = `${nodesBounds.width}px`;
+      mapImage.style.height = `${nodesBounds.height}px`;
+
+      // 7. 等待圖片載入 (不變)
+      await new Promise((resolve, reject) => {
+        mapImage.onload = resolve;
+        mapImage.onerror = reject; // 加上錯誤處理
+      });
+
+      // 8. 將圖片加入 DOM (不變)
+      exportWrapper.appendChild(mapImage);
+      document.body.appendChild(exportWrapper);
+
+      // 9. 擷取 "組合後" 的完整圖片 (不變)
+      //    加入 cacheBust: true 確保圖片最新
+      const finalImage = await toPng(exportWrapper, {
+        pixelRatio: 2,
+        cacheBust: true,
+      });
+
+      // 10. 清理戰場 (不變)
+      document.body.removeChild(exportWrapper);
+
+      // 11. 觸發下載 (不變)
+      if (type === "PNG") {
+        const a = document.createElement("a");
+        a.href = finalImage;
+        a.download = "curriculum-map.png";
+        a.click();
+      } else if (type === "PDF") {
+        // (PDF 邏輯不變)
+        const { width, height } = exportWrapper.getBoundingClientRect();
+        const orientation = width > height ? "l" : "p";
+        const pdf = new jsPDF(orientation, "px", [width, height]);
+        pdf.addImage(finalImage, "PNG", 0, 0, width, height);
+        pdf.save("curriculum-map.pdf");
+      }
+
+    } catch (err) {
+      console.error("匯出失敗:", err);
+    } finally {
+      onExportEnd();
+    }
+  };
+
+  // ... (ExportComponent 的 return JSX 不變)
+  return (
+  	<div className="flex flex-col space-y-2">
+  	  <button
+  	  	onClick={() => exportImage("PNG")}
+  	  	disabled={isExporting} // 加上 disabled
+  	  	className="px-3 py-2 bg-blue-500 text-white rounded shadow hover:bg-blue-600 disabled:opacity-50 disabled:cursor-not-allowed" // 加上 className
+  	  >
+  	  	{isExporting ? "匯出中..." : "匯出 PNG"}
+  	  </button>
+  	  <button
+  	  	onClick={() => exportImage("PDF")}
+      disabled={isExporting} // 加上 disabled
+  	  	className="px-3 py-2 bg-green-600 text-white rounded shadow hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed" // 加上 className
+  	  >
+  	  	{isExporting ? "匯出中..." : "匯出 PDF"}
+  	  </button>
+  	</div>
+  );
+}
+
+// =========================================================
+// Hover
+// =========================================================
+const CustomNode = memo(({ data }) => {
+  const course = data.course;
+  const firstCat = course.categories?.[0] || null;
+
+  // ❗ 修改點 (2)：增加 hover 狀態
+  const [isHovered, setIsHovered] = useState(false);
+
+  return (
+    // ❗ 修改點 (3)：在根元素上偵測 hover
+    <div 
+      className="relative group select-none"
+      onMouseEnter={() => setIsHovered(true)}
+      onMouseLeave={() => setIsHovered(false)}
+    >
+
+      {/* ❗ 修改點 (4)：使用 NodeToolbar 
+          - isVisible 控制顯示
+          - position 控制從哪邊彈出
+          - offset 控制距離
+      */}
+      <NodeToolbar 
+        isVisible={isHovered} 
+        position={Position.Right} // 你可以改成 .Left, .Top, .Bottom
+        offset={10} 
+      >
+        {/* 把你原本的 Tooltip div 搬進來 */}
+        {/* ❗ 修改點 (5)：移除所有 absolute 和 z-index 定位 class */}
+        <div
+          className="bg-white text-black text-sm p-3 rounded shadow-lg w-56 pointer-events-none"
+        >
+          <div className="font-semibold text-base mb-1">{course.course_name}</div>
+          <div className="text-gray-700">學分：{course.credits}</div>
+          <div className="text-gray-700">年級：{course.year_text}</div>
+          <div className="text-gray-700">學期：{course.semester || "未指定"}</div>
+          <div className="mt-2">
+            <div className="text-gray-600 text-sm mb-1">分類：</div>
+            <div className="flex flex-wrap gap-1">
+              {(course.categories || []).map((cat, i) => (
+                <span
+                  key={i}
+                  className="px-2 py-1 rounded text-xs text-white"
+                  style={{ background: categoryColor(cat) }}
+                >
+                  {cat}
+                </span>
+              ))}
+            </div>
+          </div>
+        </div>
+      </NodeToolbar>
+
+      {/* 主卡片 */}
+      <div
+        className="rounded-lg shadow-md text-white px-3 py-2 cursor-pointer border"
+        style={{
+          width: 200,
+          background: firstCat ? categoryColor(firstCat) : "#6b7280",
+          borderColor: "#ffffff33",
+        }}
+      >
+        <div className="font-semibold">{course.course_name}</div>
+        <div className="text-sm opacity-90">{course.credits} 學分</div>
+
+        <div className="flex flex-wrap gap-1 mt-1">
+          {(course.categories || []).map((cat, i) => (
+            <span
+              key={i}
+              className="px-1 py-[2px] rounded text-xs"
+              style={{
+                background: "#ffffff33",
+                border: "1px solid rgba(255,255,255,0.4)",
+              }}
+            >
+              {cat}
+            </span>
+          ))}
+        </div>
+      </div>
+
+      {/*{/* Tooltip（永不被 ReactFlow 覆蓋） 
+      <div
+        className="absolute hidden group-hover:block z-[999999999] left-full top-1 ml-2 
+          bg-white text-black text-sm p-3 rounded shadow-lg w-56 pointer-events-none"
+      >
+        <div className="font-semibold text-base mb-1">{course.course_name}</div>
+        <div className="text-gray-700">學分：{course.credits}</div>
+        <div className="text-gray-700">年級：{course.year_text}</div>
+        <div className="text-gray-700">學期：{course.semester || "未指定"}</div>
+
+        <div className="mt-2">
+          <div className="text-gray-600 text-sm mb-1">分類：</div>
+          <div className="flex flex-wrap gap-1">
+            {(course.categories || []).map((cat, i) => (
+              <span
+                key={i}
+                className="px-2 py-1 rounded text-xs text-white"
+                style={{ background: categoryColor(cat) }}
+              >
+                {cat}
+              </span>
+            ))}
+          </div>
+        </div>
+      </div>*/}
+
+      <Handle type="target" position={Position.Top} />
+      <Handle type="source" position={Position.Bottom} />
+    </div>
+  );
+});
+
+// =========================================================
+// 🗺️ 主組件 CurriculumMap
+// =========================================================
+export default function CurriculumMap() {
+  const [depts, setDepts] = useState([]);
+  //  目前只支援510
+  const [deptId, setDeptId] = useState(510);
+
+  const [nodes, setNodes] = useState([]);
+  const [edges, setEdges] = useState([]);
+
+  const [selectedCourse, setSelectedCourse] = useState(null);
+  const [loading, setLoading] = useState(false);
+
+  const nodeTypes = { customNode: CustomNode };
+
+  const [isExporting, setIsExporting] = useState(false);
+
+  const [isInfoPanelCollapsed, setIsInfoPanelCollapsed] = useState(false);
+
+  const [mapData, setMapData] = useState({ sortedYears: [], V_GAP: 180 });
+  const toggleInfoPanel = () => {
+    setIsInfoPanelCollapsed(!isInfoPanelCollapsed);
+  };
+  // 取得系所
+  useEffect(() => {
+    axios.get("http://localhost:3001/api/departments").then((res) => {
+      setDepts(res.data || []);
+    });}
+    , []);
+  
+  const onExportPNG = useCallback(() => {
+    // .react-flow__renderer 是 React Flow 繪製節點和邊的 DOM 元素
+    const flowElement = document.querySelector(".react-flow__renderer");
+    if (!flowElement) {
+      console.error("找不到 React Flow 元素");
+      return;
+    }
+    setIsExporting(true);
+
+    toPng(flowElement, { backgroundColor: "#ffffff", cacheBust: true })
+      .then((dataUrl) => {
+        // 建立一個假的 <a> 連結來觸發下載
+        const a = document.createElement("a");
+        a.href = dataUrl;
+        a.download = "curriculum-map.png";
+        a.click();
+      })
+      .catch((err) => {
+        console.error("匯出 PNG 失敗:", err);
+      })
+      .finally(() => {
+        setIsExporting(false);
+      });
+  }, []);
+
+// ❗ 4. [新增] 匯出 PDF 的函式
+const onExportPDF = useCallback(() => {
+    const flowElement = document.querySelector(".react-flow__renderer");
+    if (!flowElement) {
+      console.error("找不到 React Flow 元素");
+      return;
+    }
+    setIsExporting(true);
+
+    toPng(flowElement, { backgroundColor: "#ffffff", cacheBust: true })
+      .then((dataUrl) => {
+        // 取得圖片的原始寬高
+        const { width, height } = flowElement.getBoundingClientRect();
+        // 判斷 PDF 應該是直向(p)還是橫向(l)
+        const orientation = width > height ? "l" : "p";
+        
+        // 'px' 表示單位是像素
+        const pdf = new jsPDF(orientation, "px", [width, height]);
+        
+        // 將圖片加入 PDF
+        pdf.addImage(dataUrl, "PNG", 0, 0, width, height);
+        pdf.save("curriculum-map.pdf");
+      })
+      .catch((err) => {
+        console.error("匯出 PDF 失敗:", err);
+      })
+      .finally(() => {
+        setIsExporting(false);
+      });
+  }, []);
+  // 取得學程地圖
+  const fetchCurriculum = useCallback(async () => {
+    setLoading(true);
+
+    const res = await axios.get(`http://localhost:3001/api/curriculum/${deptId}`);
+    const { courses, prerequisites } = res.data;
+
+    // 依年級分組
+    const groups = {};
+    courses.forEach((c) => {
+      const year = c.year_level || 999;
+      if (!groups[year]) groups[year] = [];
+      groups[year].push(c);
+    });
+
+    const sortedYears = Object.keys(groups).map(Number).sort((a, b) => a - b);
+
+    const H_GAP = 260;
+    const V_GAP = 180;
+
+    setMapData({sortedYears,V_GAP})
+    const nodeList = [];
+    sortedYears.forEach((year, rowIndex) => {
+      groups[year].forEach((c, colIndex) => {
+        nodeList.push({
+          id: String(c.course_id),
+          type: "customNode",
+          data: { course: c },
+          position: {
+            x: colIndex * H_GAP,
+            y: rowIndex * V_GAP,
+          },
+        });
+      });
+    });
+
+    const edgeList = prerequisites.map((p) => ({
+      id: `e${p.prereq_id}-${p.course_id}`,
+      source: String(p.prereq_id),
+      target: String(p.course_id),
+      animated: true,
+      type: "smoothstep",
+    }));
+
+    setNodes(nodeList);
+    setEdges(edgeList);
+    setLoading(false);
+  }, [deptId]);
+
+  useEffect(() => {
+    fetchCurriculum();
+  }, [fetchCurriculum]);
+
+  return (
+    <div className="flex h-full bg-gray-100">
+      {/* 左側：學程圖 */}
+      <div className="flex-1 p-4 flex flex-col">
+        <div className="flex items-center justify-between mb-4 flex-shrink-0">
+          {/*<h1 className="text-2xl font-bold">學程地圖</h1>*/}
+          <div className="flex items-center space-x-2">
+  	  	  	{/* 舊的按鈕會被 ExportComponent 取代 */}
+  	  	  	<select
+  	  	  	  className="border p-2 rounded"
+  	  	  	  value={deptId}
+  	  	  	  onChange={(e) => setDeptId(e.target.value)}
+  	  	  	>
+  	  	  	  {depts.map((d) => (
+  	  	  	  	<option key={d.dept_id} value={d.dept_id}>
+  	  	  	  	  {d.dept_name}
+  	  	  	  	</option>
+  	  	  	  ))}
+  	  	  	</select>
+          </div>
+        </div>
+
+      <div className="relative bg-white rounded shadow flex-1" style={{ height: "80vh", minHeight: 500 }}>
+         {/* ❗ 10. [新增] 包裹 ReactFlowProvider */}
+        <ReactFlowProvider>
+        <FlowErrorBoundary>
+          {/* ❗ 2. 使用 AnimatePresence 包裹載入狀態 */}
+          <AnimatePresence>
+            {loading && (
+              // 載入中動畫
+              <motion.div
+                key="loader"
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                className="absolute inset-0 flex justify-center items-center bg-white/60 z-10"
+              >
+                載入中…
+              </motion.div>
+            )}
+          </AnimatePresence>
+
+          {/* ❗ 3. ReactFlow 漸入動畫 (在 loading 為 false 時) */}
+          <AnimatePresence>
+            {!loading && (
+              <motion.div
+                key="reactflow"
+                className="absolute inset-0"
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                transition={{ duration: 0.5 }}
+              >
+                <ReactFlow
+                  nodes={nodes}
+                  edges={edges}
+                  nodeTypes={nodeTypes}
+                  fitView
+                  fitViewOptions={{ padding: 0.3 }}
+                  proOptions={{ hideAttribution: true }}
+                  onNodeClick={(e, node) => {
+                      const clickedCourse = node.data.course;
+                      // 檢查是否點擊了 "已經被選中" 的課程
+                      if (selectedCourse && selectedCourse.course_id === clickedCourse.course_id) {
+                        // 如果是，就"切換" (toggle) 面板
+                        toggleInfoPanel();
+                      } else {
+                        // 否則 (點了新課程)
+                        // 1. 設定新課程
+                        setSelectedCourse(clickedCourse);
+                        // 2. 強制"展開"面板
+                        setIsInfoPanelCollapsed(false);
+                      }
+                    }}
+                  >
+                  <MiniMap />
+                  <Controls />
+                  <Background gap={16} />
+                  <div div className="absolute bottom-4 right-4 z-10">
+                    <ExportComponent 
+                      isExporting={isExporting}
+                      onExportStart={() => setIsExporting(true)}
+                      onExportEnd={() => setIsExporting(false)}
+                      mapData={mapData}
+                      />
+                      {isExporting && <div style={{ color: '#555', fontSize: '12px', marginTop: '5px' }}>匯出中...</div>}
+                  </div>
+                </ReactFlow>
+              </motion.div>
+            )}
+          </AnimatePresence>
+        </FlowErrorBoundary>
+        </ReactFlowProvider>
+      </div>
+    </div>
+      
+      {/* 右側資訊面板 */}
+      <motion.div
+        initial={{ x: "100%" }}
+        animate={{ x: "0%" }}
+        transition={{ type: "spring", stiffness: 300, damping: 30 }}
+        // 加上動態寬度、動畫、和 overflow-x-hidden
+        // 也把 p-5 改成 p-4 讓收合時按鈕更協調
+        className={`bg-white border-l p-4 shadow-lg overflow-y-auto overflow-x-hidden 
+          ${isInfoPanelCollapsed ? "w-16" : "w-96"} 
+          transition-all duration-300 ease-in-out flex flex-col`}
+      >
+        {/* 收合按鈕 */}
+        <button
+          onClick={toggleInfoPanel}
+          //按鈕靠右
+          className="p-2 rounded hover:bg-gray-200 mb-4 self-end flex-shrink-0"
+        >
+          {isInfoPanelCollapsed ? "←" : "→"}
+        </button>
+
+        {/*  動畫內容包裝器 (同左側 Sidebar 邏輯) */}
+        <div
+          className={`whitespace-nowrap overflow-hidden transition-all duration-300 ${
+            isInfoPanelCollapsed ? "w-0 opacity-0" : "w-full opacity-100"
+          }`}
+        >
+          {selectedCourse ? (
+            <>
+              <h2 className="text-xl font-bold mb-2">
+                {selectedCourse.course_name}
+              </h2>
+              <p className="text-gray-600">學分：{selectedCourse.credits}</p>
+              <p className="text-gray-600">年級：{selectedCourse.year_text}</p>
+              <p className="text-gray-600">學期：{selectedCourse.semester}</p>
+
+              <div className="mt-3">
+                <div className="text-gray-600">分類：</div>
+                <div className="flex flex-wrap gap-2 mt-1">
+                  {(selectedCourse.categories || []).map((cat, i) => (
+                    <span
+                      key={i}
+                      className="px-2 py-1 rounded text-sm text-white"
+                      style={{ background: categoryColor(cat) }}
+                    >
+                      {cat}
+                   </span>
+                  ))}
+                </div>
+              </div>
+            </>
+          ) : (
+            <div className="text-gray-500">點擊左側節點查看課程資訊</div>
+         )}
+        </div>
+      </motion.div>
+    </div>
+  );
+}

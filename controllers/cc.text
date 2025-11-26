@@ -1,0 +1,72 @@
+
+
+// controllers/curriculumController.js
+import pool from "../config/db.js";
+
+function convertYearLevel(level) {
+  const map = {
+    1: "一年級上",
+    2: "一年級下",
+    3: "二年級上",
+    4: "二年級下",
+    5: "三年級上",
+    6: "三年級下",
+    7: "四年級上",
+    8: "四年級下",
+  };
+  return map[level] || "未指定";
+}
+
+export async function getCurriculumByDept(req, res) {
+  const deptId = req.params.dept_id;
+
+  try {
+    const deptCheck = await pool.query(
+      `SELECT dept_id FROM departments WHERE dept_id=$1`,
+      [deptId]
+    );
+
+    if (deptCheck.rowCount === 0) {
+      return res.status(404).json({ message: "找不到系所資料" });
+    }
+
+    // 課程 + 多分類
+    const courses = await pool.query(`
+      SELECT c.*,
+        ARRAY(
+          SELECT category_name
+          FROM course_category_map m
+          JOIN categories cat ON m.category_id = cat.category_id
+          WHERE m.course_id = c.course_id
+        ) AS categories
+      FROM courses c
+      WHERE c.dept_id = $1
+      ORDER BY c.year_level, c.course_id;
+    `, [deptId]);
+    //  年級
+    const curriculum = courses.map((c) => ({
+      course_id: c.course_id,
+      course_name: c.course_name,
+      credits: c.credits,
+      year_level: convertYearLevel(c.year_level),
+      semester: c.semester,
+      categories: c.categories,
+    }));
+    // 先修課程關係
+    const prerequisites = await pool.query(`
+      SELECT cp.course_id, cp.prereq_id
+      FROM course_prerequisite cp
+      JOIN courses c ON cp.course_id = c.course_id
+      WHERE c.dept_id = $1;
+    `, [deptId]);
+
+    res.json({
+      courses: courses.rows,
+      prerequisites: prerequisites.rows
+    });
+
+  } catch (err) {
+    console.error("學程地圖查詢失敗:", err);
+    res.status(500).json({ error: err.message });
+  }
+}

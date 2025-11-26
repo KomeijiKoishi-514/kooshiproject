@@ -1,0 +1,130 @@
+import React, { useEffect } from "react";
+import {
+  BrowserRouter as Router,
+  Routes,
+  Route,
+  Link,
+  useNavigate,
+  Navigate,
+} from "react-router-dom";
+
+import AdminPage from "./pages/adminpage";
+import CurriculumMap from "./pages/curriculummap";
+import Login from "./pages/login";
+
+// ResizeObserver 錯誤過濾
+// 25.11.16 全域錯誤監聽器
+// 必須放在 App.js 的最頂層 (component 外部)
+// 這樣它才能在 React 之前捕捉到錯誤
+const ERROR_MESSAGE_TO_IGNORE = "ResizeObserver";
+
+// 1. 捕捉「同步」錯誤
+window.addEventListener("error", (event) => {
+  if (
+    event.message &&
+    event.message.includes(ERROR_MESSAGE_TO_IGNORE)
+  ) {
+    event.preventDefault();
+    event.stopPropagation();
+    return false;
+  }
+});
+
+// 2. 捕捉「非同步 Promise」錯誤
+window.addEventListener("unhandledrejection", (event) => {
+  // 檢查 reason 是否為 Error 物件 (最常見)
+  if (
+    event.reason &&
+    event.reason.message &&
+    event.reason.message.includes(ERROR_MESSAGE_TO_IGNORE)
+  ) {
+    event.preventDefault();
+    event.stopPropagation();
+    return false;
+  }
+  
+  // 檢查 reason 是否為字串 (較少見)
+  if (
+    typeof event.reason === 'string' && 
+    event.reason.includes(ERROR_MESSAGE_TO_IGNORE)
+  ) {
+    event.preventDefault();
+    event.stopPropagation();
+    return false;
+  }
+});
+
+function NavBar() {
+  const nav = useNavigate();
+  const logout = () => {
+    localStorage.removeItem("admin_token");
+    nav("/login");
+  };
+
+  const isLoggedIn = !!localStorage.getItem("admin_token");
+
+  return (
+    <nav className="bg-blue-600 text-white px-6 py-3 flex justify-between items-center">
+      <div className="flex items-center space-x-3">
+        <img src="/images/USC.png" alt="USC" className="h-8 w-8 object-contain"/>
+        <h1 className="text-xl font-bold">學程地圖管理系統</h1>
+      </div>
+      <div className="space-x-4 flex items-center">
+        <Link to="/curriculum" className="hover:text-yellow-300">
+          學程地圖
+        </Link>
+        {isLoggedIn ? (
+          <>
+            <Link to="/admin" className="hover:text-yellow-300">
+              管理系統
+            </Link>
+            <button
+              onClick={logout}
+              className="ml-2 px-3 py-1 bg-red-500 rounded hover:bg-red-600"
+            >
+              登出
+            </button>
+          </>
+        ) : (
+          <Link to="/login" className="hover:text-yellow-300">
+            管理登入
+          </Link>
+        )}
+      </div>
+    </nav>
+  );
+}
+
+function ProtectedRoute({ element: Element }) {
+  const nav = useNavigate();
+  useEffect(() => {
+    const token = localStorage.getItem("admin_token");
+    if (!token) nav("/login");
+  }, [nav]);
+  return <Element />;
+}
+
+export default function App() {
+  return (
+    <Router>
+      <div className="flex flex-col h-screen bg-gray-100">
+        <NavBar />
+        <main className="flex-1 overflow-y-auto">
+          <Routes>
+            {/* 登入頁 */}
+            <Route path="/login" element={<Login />} />
+
+            {/* 管理頁（受保護路由） */}
+            <Route path="/admin" element={<ProtectedRoute element={AdminPage} />} />
+
+            {/* 學程地圖頁 */}
+            <Route path="/curriculum" element={<CurriculumMap />} />
+
+            {/* 預設導向學程地圖 */}
+            <Route path="*" element={<CurriculumMap />} />
+          </Routes>
+        </main>
+      </div>
+    </Router>
+  );
+}
