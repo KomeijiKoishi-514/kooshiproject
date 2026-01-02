@@ -3,6 +3,7 @@ import pool from "../config/db.js";
 
 /* ============================================
    取得課程列表（支援 ?dept_id=510 篩選）
+   🔥 修改：加入 module_ids 的查詢
 ============================================ */
 export const getCourses = async (req, res) => {
   try {
@@ -48,10 +49,17 @@ export const getCourses = async (req, res) => {
                 ON cc.category_id = m.category_id
             WHERE m.course_id = c.course_id
           ),
-        '{}') AS categories
+        '{}') AS categories,
+        COALESCE(
+          ARRAY(
+            SELECT mc.module_id
+            FROM module_courses mc
+            WHERE mc.course_id = c.course_id
+          ),
+        '{}') AS module_ids
       FROM courses c
-      ${whereClause}  -- 這裡插入動態的 WHERE 條件
-      ORDER BY c.course_id DESC; -- 改為 DESC (新課程在最上面)
+      ${whereClause}
+      ORDER BY c.course_id DESC;
     `;
 
     const result = await pool.query(query, values);
@@ -64,7 +72,8 @@ export const getCourses = async (req, res) => {
 };
 
 /* ============================================
-   新增課程（含分類）
+   新增課程（含分類 + 先修 + 模組）
+   🔥 修改：處理 module_ids
 ============================================ */
 export const createCourse = async (req, res) => {
   try {
@@ -76,7 +85,8 @@ export const createCourse = async (req, res) => {
       categories = [],
       year_level,
       dept_id,
-      prerequisite_ids = [] // 接收前端傳來的先修課 ID 陣列
+      prerequisite_ids = [], // 接收前端傳來的先修課 ID 陣列
+      module_ids = []        // 🔥 接收前端傳來的模組 ID 陣列
     } = req.body;
 
     if (!course_name || !credits || !year_level) {
@@ -103,12 +113,22 @@ export const createCourse = async (req, res) => {
       );
     }
 
-    // 3. ✅ 新增：處理先修課程關聯
+    // 3. 處理先修課程關聯
     if (prerequisite_ids.length > 0) {
       for (const prereqId of prerequisite_ids) {
         await pool.query(
           `INSERT INTO course_prerequisite (course_id, prereq_id) VALUES ($1, $2)`,
           [courseId, prereqId]
+        );
+      }
+    }
+
+    // 4. 🔥 新增：處理模組關聯 (module_courses)
+    if (module_ids.length > 0) {
+      for (const modId of module_ids) {
+        await pool.query(
+          `INSERT INTO module_courses (module_id, course_id) VALUES ($1, $2)`,
+          [modId, courseId]
         );
       }
     }
@@ -122,7 +142,8 @@ export const createCourse = async (req, res) => {
 };
 
 /* ============================================
-   更新課程（含分類 + 先修）
+   更新課程（含分類 + 先修 + 模組）
+   修改：處理 module_ids 更新
 ============================================ */
 export const updateCourse = async (req, res) => {
   try {
@@ -135,7 +156,8 @@ export const updateCourse = async (req, res) => {
       categories = [],
       year_level,
       dept_id,
-      prerequisite_ids = [] // 接收先修課 ID
+      prerequisite_ids = [], // 接收先修課 ID
+      module_ids = []        // 接收模組 ID
     } = req.body;
 
     // 1. 更新主表
@@ -159,11 +181,8 @@ export const updateCourse = async (req, res) => {
       );
     }
 
-    // 3. ✅ 新增：更新先修課程 (先刪後加)
-    // 先移除舊的關聯
+    // 3. 更新先修課程 (先刪後加)
     await pool.query(`DELETE FROM course_prerequisite WHERE course_id = $1`, [id]);
-    
-    // 再插入新的關聯
     if (prerequisite_ids.length > 0) {
       for (const prereqId of prerequisite_ids) {
         // 避免自己設為自己的先修 (防呆)
@@ -176,6 +195,17 @@ export const updateCourse = async (req, res) => {
       }
     }
 
+    // 更新模組關聯 (先刪後加)
+    await pool.query(`DELETE FROM module_courses WHERE course_id = $1`, [id]);
+    if (module_ids.length > 0) {
+      for (const modId of module_ids) {
+        await pool.query(
+          `INSERT INTO module_courses (module_id, course_id) VALUES ($1, $2)`,
+          [modId, id]
+        );
+      }
+    }
+
     res.json({ message: "課程更新成功" });
 
   } catch (err) {
@@ -185,7 +215,7 @@ export const updateCourse = async (req, res) => {
 };
 
 /* ============================================
-   刪除課程（含完整外鍵檢查）
+   刪除課程（含完整外鍵檢查）同時清理 module_courses
 ============================================ */
 export const deleteCourse = async (req, res) => {
   try {
@@ -205,21 +235,28 @@ export const deleteCourse = async (req, res) => {
     }
 
     // 清分類
-    await pool.query(
-      `DELETE FROM course_category_map WHERE course_id=$1`,
-      [id]
-    );
+    await pool.query(`DELETE FROM course_category_map WHERE course_id=$1`, [id]);
+
+    // 清模組關聯 (雖然通常用 DB CASCADE 但這裡明確寫出較保險)
+    await pool.query(`DELETE FROM module_courses WHERE course_id=$1`, [id]);
 
     // 刪課程
-    await pool.query(
-      `DELETE FROM courses WHERE course_id=$1`,
-      [id]
-    );
+    await pool.query(`DELETE FROM courses WHERE course_id=$1`, [id]);
 
     res.json({ message: "刪除成功" });
 
   } catch (err) {
     console.error("刪除錯誤:", err);
+    res.status(500).json({ message: "伺服器錯誤", error: err.message });
+  }
+};
+
+export const getCategories = async (req, res) => {
+  try {
+    const result = await pool.query("SELECT * FROM categories ORDER BY category_id ASC");
+    res.json(result.rows);
+  } catch (err) {
+    console.error("取得分類失敗:", err);
     res.status(500).json({ message: "伺服器錯誤", error: err.message });
   }
 };

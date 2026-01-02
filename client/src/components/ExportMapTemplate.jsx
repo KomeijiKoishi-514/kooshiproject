@@ -113,7 +113,7 @@ const ExportMapTemplate = forwardRef(({ courses, categories }, ref) => {
                 {cat.name}
               </div>
 
-              {/* 右側：8 格課程 */}
+              {/* 右側：課程格子 */}
               {timelines.map((t) => 
                 t.semesters.map((s) => {
                   const currentCourses = getCourses(cat.name, t.year, s);
@@ -122,28 +122,43 @@ const ExportMapTemplate = forwardRef(({ courses, categories }, ref) => {
                     <div 
                       key={`${cat.id}-${t.year}-${s}`} 
                       className={`
-                        flex flex-col gap-2 p-2 
-                        min-h-[160px] 
-                        items-center justify-start 
+                        relative 
+                        min-h-[200px]      /* 保持最小高度，確保視覺一致 */
+                        h-full             /* 跟隨同一列最高的格子自動長高 */
                         border-l border-dashed border-gray-200 
                         ${lightBg}
+                        p-2                /* 內距 */
+                        flex flex-col items-center justify-start /* 🔥 關鍵：垂直置中 */
                       `}
                     >
-                      {currentCourses.map(course => (
-                        <div 
-                          key={course.course_id}
-                          className={`
-                            w-full 
-                            flex items-center justify-center text-center
-                            px-2 py-3 rounded-lg shadow-sm 
-                            text-base font-bold text-white
-                            ${getCategoryColor(cat.name).split(' ')[0]} 
-                            cursor-default
-                          `}
-                        >
-                          {course.course_name}
-                        </div>
-                      ))}
+                      {/* 內容容器：
+                         1. 改回 flex-col (單欄垂直排列)
+                         2. 寬度設為 w-full 確保方塊整齊
+                         3. 移除 absolute，讓內容撐開父容器高度 (解決爆開問題)
+                      */}
+                      <div className="w-full flex flex-col gap-2 items-center">
+                        
+                        {currentCourses.map(course => (
+                          <div 
+                            key={course.course_id}
+                            className={`
+                              w-full 
+                              flex items-center justify-center text-center
+                              px-2 py-3 rounded-lg shadow-sm 
+                              text-base font-bold text-white /* 維持原本的字體大小 */
+                              ${getCategoryColor(cat.name).split(' ')[0]} 
+                              cursor-default
+                              min-h-[44px] /* 固定高度，視覺更整齊 */
+                            `}
+                          >
+                            {/* 加入 line-clamp 避免極端長課名破壞版面，但通常會自動換行 */}
+                            <span className="leading-tight">
+                              {course.course_name}
+                            </span>
+                          </div>
+                        ))}
+
+                      </div>
                     </div>
                   );
                 })

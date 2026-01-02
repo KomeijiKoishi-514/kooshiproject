@@ -36,3 +36,31 @@
     transform: rotate(360deg);
   }
 }
+/* 修正按鈕本身的樣式 */
+.react-flow__controls-button {
+  background-color: transparent;
+  border: none;
+  border-bottom: 1px solid #eeeeee;
+  width: 24px;   /* 強制固定寬度 */
+  height: 24px;  /* 強制固定高度 */
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 4px; /* 讓按鈕有點圓角 */
+  margin-bottom: 2px;
+}
+
+.react-flow__controls-button:last-child {
+  border-bottom: none;
+  margin-bottom: 0;
+}
+
+.react-flow__controls-button:hover {
+  background-color: #f3f4f6;
+}
+
+.react-flow__controls-button svg {
+  fill: #374151; /* 深灰色圖示 */
+  max-width: 16px;
+  max-height: 16px;
+}

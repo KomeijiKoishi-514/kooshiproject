@@ -121,3 +121,11 @@ enrollments	修課紀錄	關聯 students 與 courses
 🧾 新增	可自由擴充課程、學生，不重複
 📊 查詢	可透過 JOIN 快速組合學程地圖資料
 ☁️ 雲端	結構輕量，適合 Neon / PostgreSQL
+
+
+-- 驗證用
+-- SELECT * FROM users;
+
+-- (謹慎執行) 刪除舊表
+-- DROP TABLE admins CASCADE;
+-- DROP TABLE students CASCADE;

@@ -1,6 +1,6 @@
 後端(Backend)
 routes+controllers
-
+//  megpiwsfdwdxbmnt
 角色：資料的守門員與搬運工
 後端 (Node.js/Express)的Route是真正接觸到伺服器請求的第一線。它的重點在於「處理資料」。
 當前端（瀏覽器）想要拿資料或存資料時，會向後端發送一個請求（例如 HTTP GET 或 POST）。

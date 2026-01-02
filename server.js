@@ -6,17 +6,33 @@ import dotenv from "dotenv";
 import { neon } from "@neondatabase/serverless";
 
 // 匯入路由
+import adminUserRoutes from "./routes/adminUserRoutes.js"
 import categoryRoutes from "./routes/categoryRoutes.js";
 import courseRoutes from "./routes/courseRoutes.js";
 import curriculumRoutes from "./routes/curriculumRoutes.js";
 import authRoutes from "./routes/authRoutes.js";
 import departmentRoutes from "./routes/departmentRoutes.js";
+import userRoutes from "./routes/userRoutes.js";
+import planRoutes from "./routes/planRoutes.js";
+import recordRoutes from "./routes/recordRoutes.js";
 
 dotenv.config();
 
 const app = express();
 app.use(cors());
 app.use(bodyParser.json());
+
+const corsOptions = {
+  origin: [
+    "http://localhost:3000", // 允許本地開發
+    "https://my-super-project-api.loca.lt"
+  ],
+  methods: "GET,HEAD,PUT,PATCH,POST,DELETE",
+  credentials: true,
+  optionsSuccessStatus: 204,
+};
+
+app.use(cors(corsOptions));
 
 // ======================================
 // Neon 資料庫初始化
@@ -36,11 +52,15 @@ app.get("/api/version", async (req, res) => {
 // ======================================
 //  API 路由掛載區
 // ======================================
+app.use("/api/auth", authRoutes);
+app.use("/api/admin/users", adminUserRoutes);
 app.use("/api/course-categories", categoryRoutes);
 app.use("/api/courses", courseRoutes);
 app.use("/api/curriculum", curriculumRoutes);
-app.use("/api/auth", authRoutes);
 app.use("/api/departments", departmentRoutes);
+app.use("/api/plans", planRoutes);
+app.use("/api/user", userRoutes);
+app.use("/api/records", recordRoutes);
 // ======================================
 //  啟動伺服器
 // ======================================
